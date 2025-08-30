@@ -6,6 +6,7 @@ set -euo pipefail
 ### - Instala pacotes base (i3, polybar, rofi, zsh, etc.)
 ### - (Opcional) Instala pacotes listados em pacotes.txt
 ### - Copia dotfiles deste repositório para $HOME com backup
+### - Aplica configs de /etc versionadas (ex.: touchpad)
 ### - Define Zsh como shell padrão
 ### ─────────────────────────────────────────────────────────────────────────────
 
@@ -15,7 +16,11 @@ REPO_DIR="$(pwd)"             # assume que você está dentro do repo
 HOME_CFG="$HOME/.config"
 
 echo "→ Iniciando bootstrap (repo: $REPO_DIR)"
-sudo true  # aquece sudo
+
+# Se não for root, aquece sudo
+if [[ $EUID -ne 0 ]]; then
+  sudo true
+fi
 
 ### 0) Sanidade do sistema
 if ! command -v apt >/dev/null 2>&1; then
@@ -38,7 +43,6 @@ sudo update-alternatives --install /usr/bin/bat batcat /usr/bin/batcat 50 || tru
 ### 2) (Opcional) Instalar pacotes do seu pacotes.txt
 if [[ -f "$REPO_DIR/pacotes.txt" ]]; then
   echo "→ pacotes.txt detectado; reinstalando seu stack…"
-  # Filtra linhas em branco e comentários, evita erro de xargs se vazio
   grep -E '^[a-zA-Z0-9]' "$REPO_DIR/pacotes.txt" | xargs -r sudo apt install -y
 else
   echo "→ Sem pacotes.txt (ok). Pulando reinstalação de lista personalizada."
@@ -54,20 +58,17 @@ cp_with_backup () {
   if [[ -e "$dst" || -L "$dst" ]]; then
     mv -v "$dst" "${dst}${BACKUP_SUFFIX}"
   fi
-  # copia preservando estrutura
   rsync -aH --no-perms --no-owner --no-group "$src" "$dst"
 }
 
 ### 5) Aplicar .config selecionado do repo
 if [[ -d "$REPO_DIR/.config" ]]; then
   echo "→ Aplicando .config do repo → $HOME/.config (com backup pontual por item)…"
-  # Copia subpastas selecionadas (se existirem no repo)
   for d in i3 polybar rofi picom kitty alacritty neofetch htop dunst superfile; do
     if [[ -d "$REPO_DIR/.config/$d" ]]; then
       cp_with_backup "$REPO_DIR/.config/$d" "$HOME_CFG/"
     fi
   done
-  # arquivos soltos em .config (ex.: starship.toml)
   shopt -s nullglob
   for f in "$REPO_DIR/.config/"*.*; do
     base=$(basename "$f")
@@ -103,19 +104,39 @@ if [[ -d "$REPO_DIR/xwinwrap" ]]; then
   cp_with_backup "$REPO_DIR/xwinwrap" "$HOME/"
 fi
 
-### 8) Shell padrão → Zsh
+### 8) Aplicar configs de /etc (templates do repo)
+is_vm=false
+if grep -qiE 'virtualbox|vmware|kvm|qemu' /sys/class/dmi/id/product_name 2>/dev/null; then
+  is_vm=true
+fi
+
+if [ "$is_vm" = false ]; then
+  if [[ -d "$REPO_DIR/etc" ]]; then
+    echo "→ Aplicando templates de /etc (hardware real detectado)…"
+    while IFS= read -r -d '' f; do
+      rel="${f#$REPO_DIR/}"
+      dst="/$rel"
+      echo "   - instalando $rel"
+      sudo install -D -b -m 644 "$f" "$dst"
+    done < <(find "$REPO_DIR/etc" -type f -print0)
+  fi
+else
+  echo "→ VM detectada: pulando configs de /etc (ex.: touchpad/backlight não têm efeito)."
+fi
+
+### 9) Shell padrão → Zsh
 if [[ "$SHELL" != "/usr/bin/zsh" ]]; then
   echo "→ Trocando shell padrão para zsh (pede senha)…"
   chsh -s /usr/bin/zsh "$USER" || true
 fi
 
-### 9) Tentar aplicar wallpaper (se .fehbg estiver presente)
+### 10) Tentar aplicar wallpaper (se .fehbg estiver presente)
 if [[ -f "$HOME/.fehbg" ]]; then
   echo "→ Aplicando wallpaper via ~/.fehbg"
   bash "$HOME/.fehbg" || true
 fi
 
-### 10) Mensagem final
+### 11) Mensagem final
 echo
 echo "✓ Bootstrap concluído."
 echo "   • Backups criados com sufixo: ${BACKUP_SUFFIX}"
