@@ -1,0 +1,31 @@
+# Nunca versionar segredos/pesados
+*.swp
+*.swo
+.DS_Store
+.cache/
+Trash/
+node_modules/
+*.log
+
+# SSH/GPG/Tokens (mantenha fora do repo)
+.ssh/
+.gnupg/
+.netrc
+.npmrc
+.pypirc
+.aws/
+.azure/
+.gcloud/
+.config/rclone/
+.config/gh/hosts.yml
+.config/git/credentials
+
+# Navegadores e apps pesados
+.mozilla/
+.chromium/
+.google-chrome/
+.config/BraveSoftware/
+
+# Local share variável
+.local/share/Trash/
+.local/share/recently-used.xbel
